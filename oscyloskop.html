@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Oscyloskop mikrofonowy</title>
+<style>
+:root{--bg:#e8ecef;--panel:#f7f9fa;--ink:#18222b;--mute:#5a6874;--line:#cdd5db;--accent:#0f6b7a;--onacc:#fff;--rec:#c93a3a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11161b;--panel:#182028;--ink:#e6ecf0;--mute:#8d9ba7;--line:#2a3540;--accent:#5cc3d4;--onacc:#0b1519;--rec:#ef6a6a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#11161b;--panel:#182028;--ink:#e6ecf0;--mute:#8d9ba7;--line:#2a3540;--accent:#5cc3d4;--onacc:#0b1519;--rec:#ef6a6a;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*:before,*:after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:780px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:1.5rem;margin:0 0 2px;font-weight:650;letter-spacing:-.01em}
+h2{font-size:1.1rem;margin:28px 0 10px;font-weight:650}
+.lead{margin:0 0 14px;color:var(--mute)}
+.scope{background:#0b1519;border-radius:10px;padding:8px 8px 6px;border:1px solid var(--line)}
+canvas{display:block;width:100%;aspect-ratio:5/3;border-radius:4px}
+.cap{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#7fa7ae;font:12px ui-monospace,Menlo,Consolas,monospace;padding:6px 4px 0}
+.read{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.read div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.read small{display:block;color:var(--mute);font-size:.78rem}
+.read b{font:600 1.15rem ui-monospace,Menlo,Consolas,monospace}
+.read .clip b{color:var(--rec)}
+#status{margin:8px 0 12px;min-height:1.5em;color:var(--mute);font-size:.92rem}
+#status.err{color:var(--rec)}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;align-items:center}
+button,select{font:inherit;min-height:44px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:0 14px}
+button{cursor:pointer;font-weight:550}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--onacc)}
+button.rec{border-color:var(--rec);color:var(--rec)}
+button.rec.on{background:var(--rec);color:#fff}
+button.rec.on:before{content:"";display:inline-block;width:.6em;height:.6em;border-radius:50%;background:#fff;margin-right:.5em;animation:bl 1s steps(2) infinite}
+@keyframes bl{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){button.rec.on:before{animation:none}}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.ctl label{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--mute)}
+.ctl select,.ctl input{width:100%}
+input[type=range]{min-height:44px;accent-color:var(--accent)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:4px 0 8px}
+.bar i{display:block;height:100%;width:0;background:var(--accent)}
+.time{font:600 1rem ui-monospace,Menlo,Consolas,monospace}
+.note{color:var(--mute);font-size:.85rem;margin:6px 0 0}
+</style></head><body>
+<main>
+<h1>Oscyloskop mikrofonowy</h1>
+<p class="lead">Sygnał z wejścia mikrofonowego na żywo, z nagrywaniem i odtwarzaniem w zwolnionym tempie.</p>
+
+<div class="scope"><canvas id="cv"></canvas><div class="cap"><span id="capT"></span><span id="capA"></span></div></div>
+<div class="read">
+<div id="rPk"><small>Szczyt</small><b>—</b></div>
+<div id="rPp"><small>Rozmach (p-p)</small><b>—</b></div>
+<div id="rF"><small>Częstotliwość</small><b>—</b></div>
+</div>
+<div id="status">Włącz mikrofon, aby zobaczyć sygnał.</div>
+
+<div class="row">
+<button id="bMic" class="pri">Włącz mikrofon</button>
+<button id="bHold" disabled>Zatrzymaj obraz</button>
+<select id="dev" aria-label="Wejście audio" hidden></select>
+</div>
+
+<div class="ctl">
+<label>Podstawa czasu
+<select id="tb"><option value="5">5 ms</option><option value="10">10 ms</option><option value="20" selected>20 ms</option><option value="50">50 ms</option><option value="100">100 ms</option><option value="200">200 ms</option></select></label>
+<label>Wzmocnienie obrazu
+<select id="gain"><option value="1">×1</option><option value="2">×2</option><option value="5">×5</option><option value="10" selected>×10</option><option value="20">×20</option><option value="50">×50</option><option value="100">×100</option></select></label>
+<label>Poziom wyzwalania
+<input id="trig" type="range" min="-100" max="100" value="0" step="1"></label>
+</div>
+
+<h2>Nagranie</h2>
+<div class="row">
+<button id="bRec" class="rec" disabled>Nagrywaj</button>
+<button id="bPlay" disabled>Odtwórz</button>
+<button id="bSave" disabled>Zapisz WAV</button>
+</div>
+<div class="bar"><i id="prog"></i></div>
+<div class="time" id="time">00:00.0</div>
+<div class="ctl" style="margin-top:12px">
+<label>Prędkość odtwarzania
+<select id="rate"><option value="0.1">0,1×</option><option value="0.25">0,25×</option><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label>
+<label>Głośność odtwarzania
+<select id="vol"><option value="1" selected>×1</option><option value="2">×2</option><option value="5">×5</option><option value="10">×10</option></select></label>
+</div>
+<p class="note">Nagranie jest surowe (bez redukcji szumów i automatycznego wzmocnienia), mono, do 2 minut. Podczas odtwarzania oscyloskop pokazuje odtwarzany sygnał. Przy większej głośności zacznij od niskiej, piezo potrafi dać ostre piki.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const cv=$("cv"),g=cv.getContext("2d");
+const MAXS=120;
+let ctx,analyser,scopeIn,micGain,playGain,proc,sink,micSrc,stream,buf;
+let live=false,hold=false,rec=false,chunks=[],recLen=0,recBuf=null,playSrc=null,playT0=0,playRate=1,frame=null,lastRead=0;
+
+function msg(t,err){const s=$("status");s.textContent=t;s.className=err?"err":""}
+function fmt(t){const m=Math.floor(t/60),s=t-m*60;return String(m).padStart(2,"0")+":"+(s<10?"0":"")+s.toFixed(1)}
+const pl=(v,d)=>v.toLocaleString("pl-PL",{minimumFractionDigits:d,maximumFractionDigits:d});
+
+function ensureCtx(){
+ if(ctx)return;
+ ctx=new(window.AudioContext||window.webkitAudioContext)();
+ analyser=ctx.createAnalyser();analyser.fftSize=32768;analyser.smoothingTimeConstant=0;
+ buf=new Float32Array(analyser.fftSize);
+ scopeIn=ctx.createGain();scopeIn.connect(analyser);
+ micGain=ctx.createGain();micGain.connect(scopeIn);
+ playGain=ctx.createGain();playGain.connect(ctx.destination);
+ proc=ctx.createScriptProcessor(4096,1,1);
+ sink=ctx.createGain();sink.gain.value=0;proc.connect(sink);sink.connect(ctx.destination);
+ proc.onaudioprocess=e=>{
+  if(!rec)return;
+  chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  recLen+=4096;
+  if(recLen>=MAXS*ctx.sampleRate)stopRec();
+ };
+}
+
+async function startMic(){
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg("Ta przeglądarka nie udostępnia mikrofonu. Użyj Chrome lub Firefoksa przez HTTPS.",1);return}
+ const id=$("dev").value;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:{deviceId:id?{exact:id}:undefined,echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+ }catch(e){msg("Brak dostępu do mikrofonu ("+e.name+"). Zezwól na dostęp albo otwórz stronę w osobnej karcie.",1);return}
+ ensureCtx();await ctx.resume();stopPlay();
+ micSrc=ctx.createMediaStreamSource(stream);micSrc.connect(micGain);micSrc.connect(proc);
+ live=true;msg("Mikrofon włączony.");
+ fillDev();ui();
+}
+function stopMic(){
+ if(rec)stopRec();
+ if(stream)stream.getTracks().forEach(t=>t.stop());
+ if(micSrc)micSrc.disconnect();
+ live=false;msg("Mikrofon wyłączony.");ui();
+}
+async function fillDev(){
+ try{
+  const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==="audioinput");
+  const sel=$("dev"),cur=stream.getAudioTracks()[0].getSettings().deviceId;
+  sel.textContent="";
+  ds.forEach((d,i)=>{const o=document.createElement("option");o.value=d.deviceId;o.textContent=d.label||("Wejście "+(i+1));sel.appendChild(o)});
+  if(cur)sel.value=cur;
+  sel.hidden=ds.length<2;
+ }catch(e){}
+}
+
+function startRec(){
+ if(!live)return;
+ stopPlay();chunks=[];recLen=0;rec=true;ui();
+}
+function stopRec(){
+ rec=false;
+ const n=Math.min(recLen,Math.floor(MAXS*ctx.sampleRate));
+ const out=new Float32Array(n);let o=0;
+ for(const c of chunks){const k=Math.min(c.length,n-o);if(k<=0)break;out.set(c.subarray(0,k),o);o+=k}
+ chunks=[];recBuf=out;ui();
+ msg("Nagranie gotowe: "+fmt(n/ctx.sampleRate)+".");
+}
+
+function play(){
+ if(!recBuf||playSrc||rec)return;
+ ensureCtx();ctx.resume();
+ const ab=ctx.createBuffer(1,recBuf.length,ctx.sampleRate);ab.copyToChannel(recBuf,0);
+ playRate=parseFloat($("rate").value);
+ const s=ctx.createBufferSource();s.buffer=ab;s.playbackRate.value=playRate;
+ s.connect(scopeIn);s.connect(playGain);
+ playGain.gain.value=parseFloat($("vol").value);
+ micGain.gain.value=0;
+ s.onended=()=>{if(playSrc===s)stopPlay()};
+ playSrc=s;playT0=ctx.currentTime;s.start();ui();
+}
+function stopPlay(){
+ if(playSrc){const s=playSrc;playSrc=null;try{s.stop()}catch(e){}s.disconnect()}
+ if(micGain)micGain.gain.value=1;
+ $("prog").style.width="0";ui();
+}
+
+function wav(f,sr){
+ const n=f.length,b=new DataView(new ArrayBuffer(44+n*2));
+ const s=(o,t)=>{for(let i=0;i<t.length;i++)b.setUint8(o+i,t.charCodeAt(i))};
+ s(0,"RIFF");b.setUint32(4,36+n*2,true);s(8,"WAVE");s(12,"fmt ");
+ b.setUint32(16,16,true);b.setUint16(20,1,true);b.setUint16(22,1,true);
+ b.setUint32(24,sr,true);b.setUint32(28,sr*2,true);b.setUint16(32,2,true);b.setUint16(34,16,true);
+ s(36,"data");b.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++){const v=Math.max(-1,Math.min(1,f[i]));b.setInt16(44+i*2,v<0?v*32768:v*32767,true)}
+ return new Blob([b],{type:"audio/wav"});
+}
+function save(){
+ if(!recBuf)return;
+ try{
+  const u=URL.createObjectURL(wav(recBuf,ctx.sampleRate)),a=document.createElement("a"),d=new Date();
+  a.href=u;a.download="piezo-"+d.toISOString().slice(0,19).replace(/[-:T]/g,"")+".wav";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),4000);
+ }catch(e){msg("Nie udało się zapisać pliku.",1)}
+}
+
+function ui(){
+ $("bMic").textContent=live?"Wyłącz mikrofon":"Włącz mikrofon";
+ $("bMic").className=live?"":"pri";
+ $("bHold").disabled=!ctx;
+ const r=$("bRec");r.disabled=!live;r.textContent=rec?"Zakończ nagranie":"Nagrywaj";r.classList.toggle("on",rec);
+ $("bPlay").disabled=!recBuf||rec;$("bPlay").textContent=playSrc?"Zatrzymaj":"Odtwórz";
+ $("bSave").disabled=!recBuf||rec;
+}
+
+function caps(){
+ const ms=+$("tb").value,gn=+$("gain").value;
+ $("capT").textContent=pl(ms/10,1)+" ms/dz.";
+ $("capA").textContent=pl(25/gn,2)+" % skali/dz.";
+}
+
+function fit(){const d=window.devicePixelRatio||1;cv.width=Math.round(cv.clientWidth*d);cv.height=Math.round(cv.clientHeight*d)}
+
+function frameUpdate(){
+ if(!analyser||hold)return;
+ analyser.getFloatTimeDomainData(buf);
+ const sr=ctx.sampleRate,ms=+$("tb").value,win=Math.min(Math.round(ms*sr/1000),buf.length-2);
+ const pre=Math.round(win*.1),lv=+$("trig").value/100;
+ let st=buf.length-win;
+ for(let i=buf.length-win+pre;i>pre;i--){if(buf[i-1]<lv&&buf[i]>=lv){st=i-pre;break}}
+ frame=buf.slice(st,st+win);
+ const now=performance.now();
+ if(now-lastRead<150)return;
+ lastRead=now;
+ let mx=-1,mn=1;
+ for(let i=0;i<frame.length;i++){const v=frame[i];if(v>mx)mx=v;if(v<mn)mn=v}
+ const pk=Math.max(Math.abs(mx),Math.abs(mn));
+ let bm=0;for(let i=0;i<buf.length;i+=4){const a=Math.abs(buf[i]);if(a>bm)bm=a}
+ let f=0;
+ if(bm>.005){
+  const h=Math.max(.003,bm*.2);let arm=true,first=-1,last=-1,n=0;
+  for(let i=0;i<buf.length;i++){const v=buf[i];if(arm&&v>h){arm=false;if(first<0)first=i;last=i;n++}else if(!arm&&v<-h)arm=true}
+  if(n>2)f=(n-1)*sr/(last-first);
+ }
+ $("rPk").querySelector("b").textContent=pl(pk*100,1)+" %";
+ $("rPk").className=pk>=.99?"clip":"";
+ $("rPp").querySelector("b").textContent=pl((mx-mn)*100,1)+" %";
+ $("rF").querySelector("b").textContent=f?pl(f,f<100?1:0)+" Hz":"—";
+}
+
+function draw(){
+ requestAnimationFrame(draw);
+ frameUpdate();
+ const W=cv.width,H=cv.height,d=window.devicePixelRatio||1;
+ g.shadowBlur=0;g.fillStyle="#0b1519";g.fillRect(0,0,W,H);
+ g.lineWidth=d;
+ for(let i=0;i<=10;i++){const x=Math.round(i*W/10)+.5;g.strokeStyle=i===5?"#2f5f69":"#1b3a41";g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}
+ for(let j=0;j<=8;j++){const y=Math.round(j*H/8)+.5;g.strokeStyle=j===4?"#2f5f69":"#1b3a41";g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}
+ g.strokeStyle="#2f5f69";g.beginPath();
+ for(let i=0;i<50;i++){const x=Math.round(i*W/50)+.5;g.moveTo(x,H/2-3*d);g.lineTo(x,H/2+3*d)}
+ for(let j=0;j<40;j++){const y=Math.round(j*H/40)+.5;g.moveTo(W/2-3*d,y);g.lineTo(W/2+3*d,y)}
+ g.stroke();
+ const gn=+$("gain").value,k=gn*H/2,c=H/2,lv=+$("trig").value/100,ty=c-lv*k;
+ g.setLineDash([6*d,6*d]);g.strokeStyle="rgba(255,182,39,.45)";g.beginPath();g.moveTo(0,ty);g.lineTo(W,ty);g.stroke();g.setLineDash([]);
+ g.strokeStyle="#ffb627";g.lineWidth=2*d;g.lineJoin="round";g.shadowColor="rgba(255,182,39,.6)";g.shadowBlur=6*d;
+ g.beginPath();
+ const n=frame?frame.length:0;
+ if(n&&n<=W){
+  for(let i=0;i<n;i++){const x=i*W/(n-1),y=c-frame[i]*k;i?g.lineTo(x,y):g.moveTo(x,y)}
+ }else if(n){
+  for(let x=0;x<W;x++){
+   const a=Math.floor(x*n/W),b=Math.max(a+1,Math.floor((x+1)*n/W));let lo=1,hi=-1;
+   for(let i=a;i<b&&i<n;i++){const v=frame[i];if(v<lo)lo=v;if(v>hi)hi=v}
+   if(x===0){g.moveTo(x,c-lo*k)}else{g.lineTo(x,c-lo*k)}
+   g.lineTo(x,c-hi*k);
+  }
+ }else{g.moveTo(0,c);g.lineTo(W,c)}
+ g.stroke();
+ if(ctx){
+  if(rec){$("time").textContent=fmt(recLen/ctx.sampleRate);$("prog").style.width=Math.min(100,recLen/(MAXS*ctx.sampleRate)*100)+"%"}
+  else if(playSrc&&recBuf){
+   const p=Math.min(recBuf.length/ctx.sampleRate,(ctx.currentTime-playT0)*playRate);
+   $("time").textContent=fmt(p)+" / "+fmt(recBuf.length/ctx.sampleRate);
+   $("prog").style.width=(p/(recBuf.length/ctx.sampleRate)*100)+"%";
+  }else if(recBuf){$("time").textContent=fmt(recBuf.length/ctx.sampleRate)}
+ }
+}
+
+$("bMic").onclick=()=>live?stopMic():startMic();
+$("bHold").onclick=()=>{hold=!hold;$("bHold").textContent=hold?"Wznów obraz":"Zatrzymaj obraz"};
+$("bRec").onclick=()=>rec?stopRec():startRec();
+$("bPlay").onclick=()=>playSrc?stopPlay():play();
+$("bSave").onclick=save;
+$("dev").onchange=()=>{if(live){stopMic();startMic()}};
+$("tb").onchange=caps;$("gain").onchange=caps;
+$("vol").onchange=()=>{if(playGain)playGain.gain.value=parseFloat($("vol").value)};
+$("rate").onchange=()=>{if(playSrc){playRate=parseFloat($("rate").value);playSrc.playbackRate.value=playRate;playT0=ctx.currentTime-($("prog").style.width?parseFloat($("prog").style.width)/100*recBuf.length/ctx.sampleRate/playRate:0)}};
+addEventListener("resize",fit);
+fit();caps();ui();draw();
+</script>
+</body></html>
